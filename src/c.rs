@@ -23,7 +23,6 @@
 // Keep in sync with the checks in base.h that verify these assumptions.
 
 pub(crate) type int = i32;
-pub(crate) type uint = u32;
 pub(crate) type size_t = usize;
 
 #[cfg(all(test, any(unix, windows)))]
@@ -35,11 +34,6 @@ mod tests {
         {
             let x: c::int = 1;
             let _x: libc::c_int = x;
-        }
-
-        {
-            let x: c::uint = 1;
-            let _x: libc::c_uint = x;
         }
 
         {

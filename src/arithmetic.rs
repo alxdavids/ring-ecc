@@ -15,7 +15,4 @@
 #[macro_use]
 pub mod constant;
 
-#[cfg(feature = "alloc")]
-pub mod bigint;
-
 pub mod montgomery;

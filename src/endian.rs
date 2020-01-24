@@ -10,15 +10,6 @@ where
     fn into_raw_value(self) -> T;
 }
 
-pub fn as_bytes<E: Encoding<T>, T>(x: &[E]) -> &[u8]
-where
-    T: From<E>,
-{
-    unsafe {
-        core::slice::from_raw_parts(x.as_ptr() as *const u8, x.len() * core::mem::size_of::<E>())
-    }
-}
-
 macro_rules! define_endian {
     ($endian:ident) => {
         #[repr(transparent)]

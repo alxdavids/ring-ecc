@@ -21,12 +21,6 @@
 use crate::{c, error};
 use untrusted;
 
-#[cfg(feature = "alloc")]
-use crate::bits;
-
-#[cfg(feature = "alloc")]
-use core::num::Wrapping;
-
 // XXX: Not correct for x32 ABIs.
 #[cfg(target_pointer_width = "64")]
 pub type Limb = u64;
@@ -72,96 +66,14 @@ pub fn limbs_less_than_limbs_consttime(a: &[Limb], b: &[Limb]) -> LimbMask {
 }
 
 #[inline]
-pub fn limbs_less_than_limbs_vartime(a: &[Limb], b: &[Limb]) -> bool {
-    limbs_less_than_limbs_consttime(a, b) == LimbMask::True
-}
-
-#[inline]
-#[cfg(feature = "alloc")]
-pub fn limbs_less_than_limb_constant_time(a: &[Limb], b: Limb) -> LimbMask {
-    unsafe { LIMBS_less_than_limb(a.as_ptr(), b, a.len()) }
-}
-
-#[inline]
 pub fn limbs_are_zero_constant_time(limbs: &[Limb]) -> LimbMask {
     unsafe { LIMBS_are_zero(limbs.as_ptr(), limbs.len()) }
-}
-
-#[cfg(feature = "alloc")]
-#[inline]
-pub fn limbs_are_even_constant_time(limbs: &[Limb]) -> LimbMask {
-    unsafe { LIMBS_are_even(limbs.as_ptr(), limbs.len()) }
-}
-
-#[cfg(feature = "alloc")]
-#[inline]
-pub fn limbs_equal_limb_constant_time(a: &[Limb], b: Limb) -> LimbMask {
-    unsafe { LIMBS_equal_limb(a.as_ptr(), b, a.len()) }
-}
-
-/// Returns the number of bits in `a`.
-//
-// This strives to be constant-time with respect to the values of all bits
-// except the most significant bit. This does not attempt to be constant-time
-// with respect to `a.len()` or the value of the result or the value of the
-// most significant bit (It's 1, unless the input is zero, in which case it's
-// zero.)
-#[cfg(feature = "alloc")]
-pub fn limbs_minimal_bits(a: &[Limb]) -> bits::BitLength {
-    for num_limbs in (1..=a.len()).rev() {
-        let high_limb = a[num_limbs - 1];
-
-        // Find the number of set bits in |high_limb| by a linear scan from the
-        // most significant bit to the least significant bit. This works great
-        // for the most common inputs because usually the most significant bit
-        // it set.
-        for high_limb_num_bits in (1..=LIMB_BITS).rev() {
-            let shifted = unsafe { LIMB_shr(high_limb, high_limb_num_bits - 1) };
-            if shifted != 0 {
-                return bits::BitLength::from_usize_bits(
-                    ((num_limbs - 1) * LIMB_BITS) + high_limb_num_bits,
-                );
-            }
-        }
-    }
-
-    // No bits were set.
-    bits::BitLength::from_usize_bits(0)
-}
-
-/// Equivalent to `if (r >= m) { r -= m; }`
-#[inline]
-pub fn limbs_reduce_once_constant_time(r: &mut [Limb], m: &[Limb]) {
-    assert_eq!(r.len(), m.len());
-    unsafe { LIMBS_reduce_once(r.as_mut_ptr(), m.as_ptr(), m.len()) };
 }
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum AllowZero {
     No,
     Yes,
-}
-
-/// Parses `input` into `result`, reducing it via conditional subtraction
-/// (mod `m`). Assuming 2**((self.num_limbs * LIMB_BITS) - 1) < m and
-/// m < 2**(self.num_limbs * LIMB_BITS), the value will be reduced mod `m` in
-/// constant time so that the result is in the range [0, m) if `allow_zero` is
-/// `AllowZero::Yes`, or [1, m) if `allow_zero` is `AllowZero::No`. `result` is
-/// padded with zeros to its length.
-pub fn parse_big_endian_in_range_partially_reduced_and_pad_consttime(
-    input: untrusted::Input,
-    allow_zero: AllowZero,
-    m: &[Limb],
-    result: &mut [Limb],
-) -> Result<(), error::Unspecified> {
-    parse_big_endian_and_pad_consttime(input, result)?;
-    limbs_reduce_once_constant_time(result, m);
-    if allow_zero != AllowZero::Yes {
-        if limbs_are_zero_constant_time(&result) != LimbMask::False {
-            return Err(error::Unspecified);
-        }
-    }
-    Ok(())
 }
 
 /// Parses `input` into `result`, verifies that the value is less than
@@ -252,138 +164,15 @@ pub fn big_endian_from_limbs(limbs: &[Limb], out: &mut [u8]) {
     }
 }
 
-#[cfg(feature = "alloc")]
-pub type Window = Limb;
-
-/// Processes `limbs` as a sequence of 5-bit windows, folding the windows from
-/// most significant to least significant and returning the accumulated result.
-/// The first window will be mapped by `init` to produce the initial value for
-/// the accumulator. Then `f` will be called to fold the accumulator and the
-/// next window until all windows are processed. When the input's bit length
-/// isn't divisible by 5, the window passed to `init` will be partial; all
-/// windows passed to `fold` will be full.
-///
-/// This is designed to avoid leaking the contents of `limbs` through side
-/// channels as long as `init` and `fold` are side-channel free.
-///
-/// Panics if `limbs` is empty.
-#[cfg(feature = "alloc")]
-pub fn fold_5_bit_windows<R, I: FnOnce(Window) -> R, F: Fn(R, Window) -> R>(
-    limbs: &[Limb],
-    init: I,
-    fold: F,
-) -> R {
-    #[derive(Clone, Copy)]
-    #[repr(transparent)]
-    struct BitIndex(Wrapping<c::size_t>);
-
-    const WINDOW_BITS: Wrapping<c::size_t> = Wrapping(5);
-
-    extern "C" {
-        fn LIMBS_window5_split_window(
-            lower_limb: Limb,
-            higher_limb: Limb,
-            index_within_word: BitIndex,
-        ) -> Window;
-        fn LIMBS_window5_unsplit_window(limb: Limb, index_within_word: BitIndex) -> Window;
-    }
-
-    let num_limbs = limbs.len();
-    let mut window_low_bit = {
-        let num_whole_windows = (num_limbs * LIMB_BITS) / 5;
-        let mut leading_bits = (num_limbs * LIMB_BITS) - (num_whole_windows * 5);
-        if leading_bits == 0 {
-            leading_bits = WINDOW_BITS.0;
-        }
-        BitIndex(Wrapping(LIMB_BITS - leading_bits))
-    };
-
-    let initial_value = {
-        let leading_partial_window =
-            unsafe { LIMBS_window5_split_window(*limbs.last().unwrap(), 0, window_low_bit) };
-        window_low_bit.0 -= WINDOW_BITS;
-        init(leading_partial_window)
-    };
-
-    let mut low_limb = 0;
-    limbs
-        .iter()
-        .rev()
-        .fold(initial_value, |mut acc, current_limb| {
-            let higher_limb = low_limb;
-            low_limb = *current_limb;
-
-            if window_low_bit.0 > Wrapping(LIMB_BITS) - WINDOW_BITS {
-                let window =
-                    unsafe { LIMBS_window5_split_window(low_limb, higher_limb, window_low_bit) };
-                window_low_bit.0 -= WINDOW_BITS;
-                acc = fold(acc, window);
-            };
-            while window_low_bit.0 < Wrapping(LIMB_BITS) {
-                let window = unsafe { LIMBS_window5_unsplit_window(low_limb, window_low_bit) };
-                // The loop exits when this subtraction underflows, causing `window_low_bit` to
-                // wrap around to a very large value.
-                window_low_bit.0 -= WINDOW_BITS;
-                acc = fold(acc, window);
-            }
-            window_low_bit.0 += Wrapping(LIMB_BITS); // "Fix" the underflow.
-
-            acc
-        })
-}
-
 extern "C" {
-    #[cfg(feature = "alloc")]
-    fn LIMB_shr(a: Limb, shift: c::size_t) -> Limb;
-
-    #[cfg(feature = "alloc")]
-    fn LIMBS_are_even(a: *const Limb, num_limbs: c::size_t) -> LimbMask;
     fn LIMBS_are_zero(a: *const Limb, num_limbs: c::size_t) -> LimbMask;
-    #[cfg(feature = "alloc")]
-    fn LIMBS_equal_limb(a: *const Limb, b: Limb, num_limbs: c::size_t) -> LimbMask;
     fn LIMBS_less_than(a: *const Limb, b: *const Limb, num_limbs: c::size_t) -> LimbMask;
-    #[cfg(feature = "alloc")]
-    fn LIMBS_less_than_limb(a: *const Limb, b: Limb, num_limbs: c::size_t) -> LimbMask;
-    fn LIMBS_reduce_once(r: *mut Limb, m: *const Limb, num_limbs: c::size_t);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use untrusted;
-
-    const MAX: Limb = LimbMask::True as Limb;
-
-    #[test]
-    fn test_limbs_are_even() {
-        static EVENS: &[&[Limb]] = &[
-            &[],
-            &[0],
-            &[2],
-            &[0, 0],
-            &[2, 0],
-            &[0, 1],
-            &[0, 2],
-            &[0, 3],
-            &[0, 0, 0, 0, MAX],
-        ];
-        for even in EVENS {
-            assert_eq!(limbs_are_even_constant_time(even), LimbMask::True);
-        }
-        static ODDS: &[&[Limb]] = &[
-            &[1],
-            &[3],
-            &[1, 0],
-            &[3, 0],
-            &[1, 1],
-            &[1, 2],
-            &[1, 3],
-            &[1, 0, 0, 0, MAX],
-        ];
-        for odd in ODDS {
-            assert_eq!(limbs_are_even_constant_time(odd), LimbMask::False);
-        }
-    }
 
     static ZEROES: &[&[Limb]] = &[
         &[],
@@ -414,77 +203,6 @@ mod tests {
         }
         for nonzero in NONZEROES {
             assert_eq!(limbs_are_zero_constant_time(nonzero), LimbMask::False);
-        }
-    }
-
-    #[test]
-    fn test_limbs_equal_limb() {
-        for zero in ZEROES {
-            assert_eq!(limbs_equal_limb_constant_time(zero, 0), LimbMask::True);
-        }
-        for nonzero in NONZEROES {
-            assert_eq!(limbs_equal_limb_constant_time(nonzero, 0), LimbMask::False);
-        }
-        static EQUAL: &[(&[Limb], Limb)] = &[
-            (&[1], 1),
-            (&[MAX], MAX),
-            (&[1, 0], 1),
-            (&[MAX, 0, 0], MAX),
-            (&[0b100], 0b100),
-            (&[0b100, 0], 0b100),
-        ];
-        for &(a, b) in EQUAL {
-            assert_eq!(limbs_equal_limb_constant_time(a, b), LimbMask::True);
-        }
-        static UNEQUAL: &[(&[Limb], Limb)] = &[
-            (&[0], 1),
-            (&[2], 1),
-            (&[3], 1),
-            (&[1, 1], 1),
-            (&[0b100, 0b100], 0b100),
-            (&[1, 0, 0b100, 0, 0, 0, 0, 0], 1),
-            (&[1, 0, 0, 0, 0, 0, 0, 0b100], 1),
-            (&[MAX, MAX], MAX),
-            (&[MAX, 1], MAX),
-        ];
-        for &(a, b) in UNEQUAL {
-            assert_eq!(limbs_equal_limb_constant_time(a, b), LimbMask::False);
-        }
-    }
-
-    #[test]
-    #[cfg(feature = "alloc")]
-    fn test_limbs_less_than_limb_constant_time() {
-        static LESSER: &[(&[Limb], Limb)] = &[
-            (&[0], 1),
-            (&[0, 0], 1),
-            (&[1, 0], 2),
-            (&[2, 0], 3),
-            (&[2, 0], 3),
-            (&[MAX - 1], MAX),
-            (&[MAX - 1, 0], MAX),
-        ];
-        for &(a, b) in LESSER {
-            assert_eq!(limbs_less_than_limb_constant_time(a, b), LimbMask::True);
-        }
-        static EQUAL: &[(&[Limb], Limb)] = &[
-            (&[0], 0),
-            (&[0, 0, 0, 0], 0),
-            (&[1], 1),
-            (&[1, 0, 0, 0, 0, 0, 0], 1),
-            (&[MAX], MAX),
-        ];
-        static GREATER: &[(&[Limb], Limb)] = &[
-            (&[1], 0),
-            (&[2, 0], 1),
-            (&[3, 0, 0, 0], 1),
-            (&[0, 1, 0, 0], 1),
-            (&[0, 0, 1, 0], 1),
-            (&[0, 0, 1, 1], 1),
-            (&[MAX], MAX - 1),
-        ];
-        for &(a, b) in EQUAL.iter().chain(GREATER.iter()) {
-            assert_eq!(limbs_less_than_limb_constant_time(a, b), LimbMask::False);
         }
     }
 
@@ -578,29 +296,5 @@ mod tests {
         let mut out = [0xabu8; 32];
 
         big_endian_from_limbs(&limbs[..], &mut out);
-    }
-
-    #[test]
-    fn test_limbs_minimal_bits() {
-        const ALL_ONES: Limb = LimbMask::True as Limb;
-        static CASES: &[(&[Limb], usize)] = &[
-            (&[], 0),
-            (&[0], 0),
-            (&[ALL_ONES], LIMB_BITS),
-            (&[ALL_ONES, 0], LIMB_BITS),
-            (&[ALL_ONES, 1], LIMB_BITS + 1),
-            (&[0, 0], 0),
-            (&[1, 0], 1),
-            (&[0, 1], LIMB_BITS + 1),
-            (&[0, ALL_ONES], 2 * LIMB_BITS),
-            (&[ALL_ONES, ALL_ONES], 2 * LIMB_BITS),
-            (&[ALL_ONES, ALL_ONES >> 1], 2 * LIMB_BITS - 1),
-            (&[ALL_ONES, 0b100_0000], LIMB_BITS + 7),
-            (&[ALL_ONES, 0b101_0000], LIMB_BITS + 7),
-            (&[ALL_ONES, ALL_ONES >> 1], LIMB_BITS + (LIMB_BITS) - 1),
-        ];
-        for (limbs, bits) in CASES {
-            assert_eq!(limbs_minimal_bits(limbs).as_usize_bits(), *bits);
-        }
     }
 }

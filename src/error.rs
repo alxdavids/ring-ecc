@@ -20,67 +20,12 @@ use untrusted;
 extern crate std;
 
 /// An error with absolutely no details.
-///
-/// *ring* uses this unit type as the error type in most of its results
-/// because (a) usually the specific reasons for a failure are obvious or are
-/// not useful to know, and/or (b) providing more details about a failure might
-/// provide a dangerous side channel, and/or (c) it greatly simplifies the
-/// error handling logic.
-///
-/// `Result<T, ring::error::Unspecified>` is mostly equivalent to
-/// `Result<T, ()>`. However, `ring::error::Unspecified` implements
-/// [`std::error::Error`] and users of *ring* can implement
-/// `From<ring::error::Unspecified>` to map this to their own error types, as
-/// described in [“Error Handling” in the Rust Book]:
-///
-/// ```
-/// use ring::rand::{self, SecureRandom};
-///
-/// enum Error {
-///     CryptoError,
-///
-/// #  #[cfg(feature = "alloc")]
-///     IOError(std::io::Error),
-///     // [...]
-/// }
-///
-/// impl From<ring::error::Unspecified> for Error {
-///     fn from(_: ring::error::Unspecified) -> Self { Error::CryptoError }
-/// }
-///
-/// fn eight_random_bytes() -> Result<[u8; 8], Error> {
-///     let rng = rand::SystemRandom::new();
-///     let mut bytes = [0; 8];
-///
-///     // The `From<ring::error::Unspecified>` implementation above makes this
-///     // equivalent to
-///     // `rng.fill(&mut bytes).map_err(|_| Error::CryptoError)?`.
-///     rng.fill(&mut bytes)?;
-///
-///     Ok(bytes)
-/// }
-///
-/// assert!(eight_random_bytes().is_ok());
-/// ```
-///
-/// Experience with using and implementing other crypto libraries like has
-/// shown that sophisticated error reporting facilities often cause significant
-/// bugs themselves, both within the crypto library and within users of the
-/// crypto library. This approach attempts to minimize complexity in the hopes
-/// of avoiding such problems. In some cases, this approach may be too extreme,
-/// and it may be important for an operation to provide some details about the
-/// cause of a failure. Users of *ring* are encouraged to report such cases so
-/// that they can be addressed individually.
-///
-/// [`std::error::Error`]: https://doc.rust-lang.org/std/error/trait.Error.html
-/// [“Error Handling” in the Rust Book]:
-///     https://doc.rust-lang.org/book/first-edition/error-handling.html#the-from-trait
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Unspecified;
 
 impl Unspecified {
     fn description_() -> &'static str {
-        "ring::error::Unspecified"
+        "ring_ecc::error::Unspecified"
     }
 }
 
@@ -152,50 +97,6 @@ impl KeyRejected {
     /// The value returned from <Self as std::error::Error>::description()
     pub fn description_(&self) -> &'static str {
         self.0
-    }
-
-    pub(crate) fn inconsistent_components() -> Self {
-        KeyRejected("InconsistentComponents")
-    }
-
-    pub(crate) fn invalid_component() -> Self {
-        KeyRejected("InvalidComponent")
-    }
-
-    #[inline]
-    pub(crate) fn invalid_encoding() -> Self {
-        KeyRejected("InvalidEncoding")
-    }
-
-    pub(crate) fn public_key_is_missing() -> Self {
-        KeyRejected("PublicKeyIsMissing")
-    }
-
-    #[cfg(feature = "alloc")]
-    pub(crate) fn too_small() -> Self {
-        KeyRejected("TooSmall")
-    }
-
-    #[cfg(feature = "alloc")]
-    pub(crate) fn too_large() -> Self {
-        KeyRejected("TooLarge")
-    }
-
-    pub(crate) fn version_not_supported() -> Self {
-        KeyRejected("VersionNotSupported")
-    }
-
-    pub(crate) fn wrong_algorithm() -> Self {
-        KeyRejected("WrongAlgorithm")
-    }
-
-    #[cfg(feature = "alloc")]
-    pub(crate) fn private_modulus_len_not_multiple_of_512_bits() -> Self {
-        KeyRejected("PrivateModulusLenNotMultipleOf512Bits")
-    }
-
-    pub(crate) fn unexpected_error() -> Self {
-        KeyRejected("UnexpectedError")
     }
 }
 

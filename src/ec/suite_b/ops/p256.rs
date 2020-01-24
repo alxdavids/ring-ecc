@@ -13,7 +13,6 @@
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 use super::{
-    elem::{binary_op, binary_op_assign},
     elem_sqr_mul, elem_sqr_mul_acc, Modulus, *,
 };
 use core::marker::PhantomData;
@@ -74,7 +73,6 @@ pub static COMMON_OPS: CommonOps = CommonOps {
 pub static PRIVATE_KEY_OPS: PrivateKeyOps = PrivateKeyOps {
     common: &COMMON_OPS,
     elem_inv_squared: p256_elem_inv_squared,
-    point_mul_base_impl: p256_point_mul_base_impl,
     point_mul_impl: GFp_nistz256_point_mul,
 };
 
@@ -123,14 +121,6 @@ fn p256_elem_inv_squared(a: &Elem<R>) -> Elem<R> {
     acc
 }
 
-fn p256_point_mul_base_impl(g_scalar: &Scalar) -> Point {
-    let mut r = Point::new_at_infinity();
-    unsafe {
-        GFp_nistz256_point_mul_base(r.xyz.as_mut_ptr(), g_scalar.limbs.as_ptr());
-    }
-    r
-}
-
 pub static PUBLIC_KEY_OPS: PublicKeyOps = PublicKeyOps {
     common: &COMMON_OPS,
 };
@@ -142,7 +132,6 @@ pub static SCALAR_OPS: ScalarOps = ScalarOps {
 };
 
 pub static PUBLIC_SCALAR_OPS: PublicScalarOps = PublicScalarOps {
-    scalar_ops: &SCALAR_OPS,
     public_key_ops: &PUBLIC_KEY_OPS,
     private_key_ops: &PRIVATE_KEY_OPS,
 
@@ -150,19 +139,6 @@ pub static PUBLIC_SCALAR_OPS: PublicScalarOps = PublicScalarOps {
         limbs: p256_limbs![0x039cdaae, 0x0c46353d, 0x58e8617b, 0x43190553, 0, 0, 0, 0],
         m: PhantomData,
         encoding: PhantomData, // Unencoded
-    },
-};
-
-pub static PRIVATE_SCALAR_OPS: PrivateScalarOps = PrivateScalarOps {
-    scalar_ops: &SCALAR_OPS,
-
-    oneRR_mod_n: Scalar {
-        limbs: p256_limbs![
-            0xbe79eea2, 0x83244c95, 0x49bd6fa6, 0x4699799c, 0x2b6bec59, 0x2845b239, 0xf3d95620,
-            0x66e12d94
-        ],
-        m: PhantomData,
-        encoding: PhantomData, // R
     },
 };
 
@@ -317,10 +293,6 @@ extern "C" {
         p_scalar: *const Limb, // [COMMON_OPS.num_limbs]
         p_x: *const Limb,      // [COMMON_OPS.num_limbs]
         p_y: *const Limb,      // [COMMON_OPS.num_limbs]
-    );
-    fn GFp_nistz256_point_mul_base(
-        r: *mut Limb,          // [3][COMMON_OPS.num_limbs]
-        g_scalar: *const Limb, // [COMMON_OPS.num_limbs]
     );
 
     fn GFp_p256_scalar_mul_mont(

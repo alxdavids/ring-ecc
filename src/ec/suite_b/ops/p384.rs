@@ -13,7 +13,6 @@
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 use super::{
-    elem::{binary_op, binary_op_assign},
     elem_sqr_mul, elem_sqr_mul_acc, Modulus, *,
 };
 use core::marker::PhantomData;
@@ -23,6 +22,25 @@ macro_rules! p384_limbs {
         limbs![$($limb),+]
     };
 }
+
+pub static P384_GENERATOR: (Elem<R>, Elem<R>) = (
+    Elem {
+        limbs: p384_limbs![
+            0x49c0b528, 0x3dd07566, 0xa0d6ce38, 0x20e378e2, 0x541b4d6e, 0x879c3afc, 0x59a30eff,
+            0x64548684, 0x614ede2b, 0x812ff723, 0x299e1513, 0x4d3aadc2
+        ],
+        m: PhantomData,
+        encoding: PhantomData,
+    },
+    Elem {
+        limbs: p384_limbs![
+            0x4b03a4fe, 0x23043dad, 0x7bb4a9ac, 0xa1bfa8bf, 0x2e83b050, 0x8bade756, 0x68f4ffd9,
+            0xc6c35219, 0x3969a840, 0xdd800226, 0x5a15c5e9, 0x2b78abc2
+        ],
+        m: PhantomData,
+        encoding: PhantomData,
+    },
+);
 
 pub static COMMON_OPS: CommonOps = CommonOps {
     num_limbs: 384 / LIMB_BITS,
@@ -70,7 +88,6 @@ pub static COMMON_OPS: CommonOps = CommonOps {
 pub static PRIVATE_KEY_OPS: PrivateKeyOps = PrivateKeyOps {
     common: &COMMON_OPS,
     elem_inv_squared: p384_elem_inv_squared,
-    point_mul_base_impl: p384_point_mul_base_impl,
     point_mul_impl: GFp_nistz384_point_mul,
 };
 
@@ -130,30 +147,6 @@ fn p384_elem_inv_squared(a: &Elem<R>) -> Elem<R> {
     acc
 }
 
-fn p384_point_mul_base_impl(a: &Scalar) -> Point {
-    // XXX: Not efficient. TODO: Precompute multiples of the generator.
-    static P384_GENERATOR: (Elem<R>, Elem<R>) = (
-        Elem {
-            limbs: p384_limbs![
-                0x49c0b528, 0x3dd07566, 0xa0d6ce38, 0x20e378e2, 0x541b4d6e, 0x879c3afc, 0x59a30eff,
-                0x64548684, 0x614ede2b, 0x812ff723, 0x299e1513, 0x4d3aadc2
-            ],
-            m: PhantomData,
-            encoding: PhantomData,
-        },
-        Elem {
-            limbs: p384_limbs![
-                0x4b03a4fe, 0x23043dad, 0x7bb4a9ac, 0xa1bfa8bf, 0x2e83b050, 0x8bade756, 0x68f4ffd9,
-                0xc6c35219, 0x3969a840, 0xdd800226, 0x5a15c5e9, 0x2b78abc2
-            ],
-            m: PhantomData,
-            encoding: PhantomData,
-        },
-    );
-
-    PRIVATE_KEY_OPS.point_mul(a, &P384_GENERATOR)
-}
-
 pub static PUBLIC_KEY_OPS: PublicKeyOps = PublicKeyOps {
     common: &COMMON_OPS,
 };
@@ -165,7 +158,6 @@ pub static SCALAR_OPS: ScalarOps = ScalarOps {
 };
 
 pub static PUBLIC_SCALAR_OPS: PublicScalarOps = PublicScalarOps {
-    scalar_ops: &SCALAR_OPS,
     public_key_ops: &PUBLIC_KEY_OPS,
     private_key_ops: &PRIVATE_KEY_OPS,
 
@@ -180,15 +172,18 @@ pub static PUBLIC_SCALAR_OPS: PublicScalarOps = PublicScalarOps {
     },
 };
 
-pub static PRIVATE_SCALAR_OPS: PrivateScalarOps = PrivateScalarOps {
-    scalar_ops: &SCALAR_OPS,
+unsafe extern "C" fn GFp_p384_elem_sqr_mont(
+    r: *mut Limb,   // [COMMON_OPS.num_limbs]
+    a: *const Limb, // [COMMON_OPS.num_limbs]
+) {
+    // XXX: Inefficient. TODO: Make a dedicated squaring routine.
+    GFp_p384_elem_mul_mont(r, a, a);
+}
 
-    oneRR_mod_n: Scalar {
-        limbs: N_RR_LIMBS,
-        m: PhantomData,
-        encoding: PhantomData, // R
-    },
-};
+const N_RR_LIMBS: [Limb; MAX_LIMBS] = p384_limbs![
+    0x19b409a9, 0x2d319b24, 0xdf1aa419, 0xff3d81e5, 0xfcb82947, 0xbc3e483a, 0x4aab1cc5, 0xd40d4917,
+    0x28266895, 0x3fb05b7a, 0x2b39bf21, 0x0c84ee01
+];
 
 fn p384_scalar_inv_to_mont(a: &Scalar<Unencoded>) -> Scalar<R> {
     // Calculate the modular inverse of scalar |a| using Fermat's Little
@@ -324,19 +319,6 @@ fn p384_scalar_inv_to_mont(a: &Scalar<Unencoded>) -> Scalar<R> {
 
     acc
 }
-
-unsafe extern "C" fn GFp_p384_elem_sqr_mont(
-    r: *mut Limb,   // [COMMON_OPS.num_limbs]
-    a: *const Limb, // [COMMON_OPS.num_limbs]
-) {
-    // XXX: Inefficient. TODO: Make a dedicated squaring routine.
-    GFp_p384_elem_mul_mont(r, a, a);
-}
-
-const N_RR_LIMBS: [Limb; MAX_LIMBS] = p384_limbs![
-    0x19b409a9, 0x2d319b24, 0xdf1aa419, 0xff3d81e5, 0xfcb82947, 0xbc3e483a, 0x4aab1cc5, 0xd40d4917,
-    0x28266895, 0x3fb05b7a, 0x2b39bf21, 0x0c84ee01
-];
 
 extern "C" {
     fn GFp_p384_elem_add(

@@ -25,7 +25,7 @@ pub struct Elem<M, E: Encoding> {
     // XXX: pub
     pub limbs: [Limb; MAX_LIMBS],
 
-    /// The modulus *m* for the ring ℤ/mℤ for which this element is a value.
+    /// The modulus *m* for the *ring* ℤ/mℤ for which this element is a value.
     pub m: PhantomData<M>,
 
     /// The number of Montgomery factors that need to be canceled out from

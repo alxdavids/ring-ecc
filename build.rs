@@ -60,54 +60,27 @@ const RING_SRCS: &[(&[&str], &str)] = &[
     (&[], "crypto/fipsmodule/ec/gfp_p384.c"),
     (&[], "crypto/limbs/limbs.c"),
     (&[], "crypto/mem.c"),
-    (&[], "crypto/fipsmodule/modes/gcm.c"),
     (&[], "third_party/fiat/curve25519.c"),
 
     (&[X86_64, X86], "crypto/cpu-intel.c"),
 
-    (&[X86], "crypto/fipsmodule/aes/asm/aes-586.pl"),
-    (&[X86], "crypto/fipsmodule/aes/asm/aesni-x86.pl"),
-    (&[X86], "crypto/fipsmodule/aes/asm/vpaes-x86.pl"),
     (&[X86], "crypto/fipsmodule/bn/asm/x86-mont.pl"),
-    (&[X86], "crypto/chacha/asm/chacha-x86.pl"),
     (&[X86], "crypto/fipsmodule/ec/asm/ecp_nistz256-x86.pl"),
-    (&[X86], "crypto/fipsmodule/modes/asm/ghash-x86.pl"),
-    (&[X86], "crypto/poly1305/asm/poly1305-x86.pl"),
 
-    (&[X86_64], "crypto/fipsmodule/aes/asm/aes-x86_64.pl"),
-    (&[X86_64], "crypto/fipsmodule/aes/asm/aesni-x86_64.pl"),
-    (&[X86_64], "crypto/fipsmodule/aes/asm/vpaes-x86_64.pl"),
     (&[X86_64], "crypto/fipsmodule/bn/asm/x86_64-mont.pl"),
     (&[X86_64], "crypto/fipsmodule/bn/asm/x86_64-mont5.pl"),
-    (&[X86_64], "crypto/chacha/asm/chacha-x86_64.pl"),
-    (&[NEVER], "crypto/cipher_extra/asm/aes128gcmsiv-x86_64.pl"),
     (&[X86_64], "crypto/fipsmodule/ec/asm/p256-x86_64-asm.pl"),
     (&[NEVER], "crypto/fipsmodule/ec/asm/p256_beeu-x86_64-asm.pl"),
-    (&[X86_64], "crypto/fipsmodule/modes/asm/aesni-gcm-x86_64.pl"),
-    (&[X86_64], "crypto/fipsmodule/modes/asm/ghash-x86_64.pl"),
-    (&[X86_64], "crypto/poly1305/asm/poly1305-x86_64.pl"),
     (&[X86_64], SHA512_X86_64),
 
-    (&[AARCH64, ARM], "crypto/fipsmodule/aes/asm/aesv8-armx.pl"),
-    (&[AARCH64, ARM], "crypto/fipsmodule/modes/asm/ghashv8-armx.pl"),
 
-    (&[ARM], "crypto/fipsmodule/aes/asm/aes-armv4.pl"),
-    (&[ARM], "crypto/fipsmodule/aes/asm/bsaes-armv7.pl"),
     (&[ARM], "crypto/fipsmodule/bn/asm/armv4-mont.pl"),
-    (&[ARM], "crypto/chacha/asm/chacha-armv4.pl"),
-    (&[ARM], "crypto/curve25519/asm/x25519-asm-arm.S"),
     (&[ARM], "crypto/fipsmodule/ec/asm/ecp_nistz256-armv4.pl"),
-    (&[ARM], "crypto/fipsmodule/modes/asm/ghash-armv4.pl"),
-    (&[ARM], "crypto/poly1305/asm/poly1305-armv4.pl"),
     (&[ARM], "crypto/fipsmodule/sha/asm/sha256-armv4.pl"),
     (&[ARM], "crypto/fipsmodule/sha/asm/sha512-armv4.pl"),
 
-    (&[AARCH64], "crypto/fipsmodule/aes/asm/vpaes-armv8.pl"),
     (&[AARCH64], "crypto/fipsmodule/bn/asm/armv8-mont.pl"),
-    (&[AARCH64], "crypto/chacha/asm/chacha-armv8.pl"),
     (&[AARCH64], "crypto/fipsmodule/ec/asm/ecp_nistz256-armv8.pl"),
-    (&[AARCH64], "crypto/fipsmodule/modes/asm/ghash-neon-armv8.pl"),
-    (&[AARCH64], "crypto/poly1305/asm/poly1305-armv8.pl"),
     (&[AARCH64], SHA512_ARMV8),
 ];
 
@@ -130,7 +103,6 @@ const RING_INCLUDES: &[&str] =
       "crypto/internal.h",
       "crypto/limbs/limbs.h",
       "crypto/limbs/limbs.inl",
-      "crypto/fipsmodule/modes/internal.h",
       "include/GFp/aes.h",
       "include/GFp/arm_arch.h",
       "include/GFp/base.h",
@@ -248,7 +220,7 @@ const MSVC_OBJ_EXT: &str = "obj";
 
 fn main() {
     if let Ok(package_name) = std::env::var("CARGO_PKG_NAME") {
-        if package_name == "ring" {
+        if package_name == "ring-ecc" {
             ring_build_rs_main();
             return;
         }

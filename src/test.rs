@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // Copyright 2015-2016 Brian Smith.
 //
 // Permission to use, copy, modify, and/or distribute this software for any
@@ -51,7 +53,7 @@
 //! Here's how you would consume the test data:
 //!
 //! ```ignore
-//! use ring::test;
+//! use crate::test;
 //!
 //! test::run(test::test_file!("hmac_tests.txt"), |section, test_case| {
 //!     assert_eq!(section, ""); // This test doesn't use named sections.
@@ -85,7 +87,7 @@
 //! If the test fails, this will be printed (if `$RUST_BACKTRACE` is `1`):
 //!
 //! ```text
-//! src/example_tests.txt: Test panicked.
+//! src/ring_ecc/example_tests.txt: Test panicked.
 //! Curve = P-256
 //! a = 2b11cb945c8cf152ffa4c9c2b1c965b019b35d0b7626919ef0ae6cb9d232f8af
 //! b = 18905f76a53755c679fb732b7762251075ba95fc5fedb60179e730d418a9143c
@@ -113,7 +115,7 @@
 //! ```
 //!
 //! Notice that the output shows the name of the data file
-//! (`src/example_tests.txt`), the test inputs that led to the failure, and the
+//! (`src/ring_ecc/example_tests.txt`), the test inputs that led to the failure, and the
 //! stack trace to the line in the test code that panicked: entry 9 in the
 //! stack trace pointing to line 652 of the file `example.rs`.
 
@@ -121,7 +123,7 @@
 use alloc::{format, string::String, vec::Vec};
 
 #[cfg(feature = "alloc")]
-use crate::{bits, digest, error};
+use crate::{bits, error};
 
 #[cfg(any(feature = "std", feature = "test_logging"))]
 extern crate std;
@@ -166,24 +168,6 @@ impl TestCase {
             "true" => true,
             "false" => false,
             s => panic!("Invalid bool value: {}", s),
-        }
-    }
-
-    /// Maps the strings "SHA1", "SHA256", "SHA384", and "SHA512" to digest
-    /// algorithms, maps "SHA224" to `None`, and panics on other (erroneous)
-    /// inputs. "SHA224" is mapped to None because *ring* intentionally does
-    /// not support SHA224, but we need to consume test vectors from NIST that
-    /// have SHA224 vectors in them.
-    pub fn consume_digest_alg(&mut self, key: &str) -> Option<&'static digest::Algorithm> {
-        let name = self.consume_string(key);
-        match name.as_ref() {
-            "SHA1" => Some(&digest::SHA1_FOR_LEGACY_USE_ONLY),
-            "SHA224" => None, // We actively skip SHA-224 support.
-            "SHA256" => Some(&digest::SHA256),
-            "SHA384" => Some(&digest::SHA384),
-            "SHA512" => Some(&digest::SHA512),
-            "SHA512_256" => Some(&digest::SHA512_256),
-            _ => panic!("Unsupported digest algorithm: {}", name),
         }
     }
 
@@ -463,7 +447,7 @@ fn parse_test_case(
     }
 }
 
-/// Deterministic implementations of `ring::rand::SecureRandom`.
+/// Deterministic implementations of `crate::rand::SecureRandom`.
 ///
 /// These implementations are particularly useful for testing implementations
 /// of randomized algorithms & protocols using known-answer-tests where the

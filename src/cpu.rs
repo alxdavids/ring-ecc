@@ -19,52 +19,6 @@
 /// tries to read the cached values before they are written.
 ///
 /// This is a zero-sized type so that it can be "stored" wherever convenient.
-#[derive(Copy, Clone)]
-pub(crate) struct Features(());
-
-#[inline(always)]
-pub(crate) fn features() -> Features {
-    // We don't do runtime feature detection on iOS. instead some features are
-    // assumed to be present; see `arm::Feature`.
-    #[cfg(all(
-        any(
-            target_arch = "aarch64",
-            target_arch = "arm",
-            target_arch = "x86",
-            target_arch = "x86_64"
-        ),
-        not(target_os = "ios")
-    ))]
-    {
-        static INIT: spin::Once<()> = spin::Once::new();
-        let () = INIT.call_once(|| {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            {
-                extern "C" {
-                    fn GFp_cpuid_setup();
-                }
-                unsafe {
-                    GFp_cpuid_setup();
-                }
-            }
-
-            #[cfg(all(
-                any(target_os = "android", target_os = "linux"),
-                any(target_arch = "aarch64", target_arch = "arm")
-            ))]
-            {
-                arm::linux_setup();
-            }
-
-            #[cfg(all(target_os = "fuchsia", any(target_arch = "aarch64")))]
-            {
-                arm::fuchsia_setup();
-            }
-        });
-    }
-
-    Features(())
-}
 
 pub(crate) mod arm {
     #[cfg(all(
@@ -168,59 +122,10 @@ pub(crate) mod arm {
         }
     }
 
-    pub(crate) struct Feature {
-        #[cfg_attr(
-            any(
-                target_os = "ios",
-                not(any(target_arch = "arm", target_arch = "aarch64"))
-            ),
-            allow(dead_code)
-        )]
-        mask: u32,
-
-        #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
-        ios: bool,
-    }
-
-    impl Feature {
-        #[inline(always)]
-        pub fn available(&self, _: super::Features) -> bool {
-            #[cfg(all(target_os = "ios", any(target_arch = "arm", target_arch = "aarch64")))]
-            {
-                return self.ios;
-            }
-
-            #[cfg(all(
-                any(target_os = "android", target_os = "linux", target_os = "fuchsia"),
-                any(target_arch = "arm", target_arch = "aarch64")
-            ))]
-            {
-                return self.mask == self.mask & unsafe { GFp_armcap_P };
-            }
-
-            #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
-            {
-                return false;
-            }
-        }
-    }
-
     // Keep in sync with `ARMV7_NEON`.
     #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
     pub(crate) const NEON: Feature = Feature {
         mask: 1 << 0,
-        ios: true,
-    };
-
-    // Keep in sync with `ARMV8_AES`.
-    pub(crate) const AES: Feature = Feature {
-        mask: 1 << 2,
-        ios: true,
-    };
-
-    // Keep in sync with `ARMV8_PMULL`.
-    pub(crate) const PMULL: Feature = Feature {
-        mask: 1 << 5,
         ios: true,
     };
 
@@ -230,77 +135,5 @@ pub(crate) mod arm {
     ))]
     extern "C" {
         static mut GFp_armcap_P: u32;
-    }
-}
-
-#[cfg_attr(
-    not(any(target_arch = "x86", target_arch = "x86_64")),
-    allow(dead_code)
-)]
-pub(crate) mod intel {
-    pub(crate) struct Feature {
-        word: usize,
-        mask: u32,
-    }
-
-    impl Feature {
-        #[inline(always)]
-        pub fn available(&self, _: super::Features) -> bool {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            {
-                extern "C" {
-                    static mut GFp_ia32cap_P: [u32; 4];
-                }
-                return self.mask == self.mask & unsafe { GFp_ia32cap_P[self.word] };
-            }
-
-            #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-            {
-                return false;
-            }
-        }
-    }
-
-    pub(crate) const FXSR: Feature = Feature {
-        word: 0,
-        mask: 1 << 24,
-    };
-
-    pub(crate) const PCLMULQDQ: Feature = Feature {
-        word: 1,
-        mask: 1 << 1,
-    };
-
-    pub(crate) const SSSE3: Feature = Feature {
-        word: 1,
-        mask: 1 << 9,
-    };
-
-    #[cfg(target_arch = "x86_64")]
-    pub(crate) const MOVBE: Feature = Feature {
-        word: 1,
-        mask: 1 << 22,
-    };
-
-    pub(crate) const AES: Feature = Feature {
-        word: 1,
-        mask: 1 << 25,
-    };
-
-    #[cfg(target_arch = "x86_64")]
-    pub(crate) const AVX: Feature = Feature {
-        word: 1,
-        mask: 1 << 28,
-    };
-
-    #[cfg(all(target_arch = "x86_64", test))]
-    mod x86_64_tests {
-        use super::*;
-
-        #[test]
-        fn test_avx_movbe_mask() {
-            // This is the OpenSSL style of testing these bits.
-            assert_eq!((AVX.mask | MOVBE.mask) >> 22, 0x41);
-        }
     }
 }
